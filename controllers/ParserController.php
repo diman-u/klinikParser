@@ -73,6 +73,7 @@ class ParserController extends Controller{
         $num = ($count[0] % 10 != 0) ? ceil($count[0]/10) : $count[0]/10;
 
         for($i=1; $i<=$num; $i++ ){
+            echo $i . "\n";
             $this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
         }
 
@@ -118,9 +119,17 @@ class ParserController extends Controller{
                 $updateData['rating'] = rtrim(rtrim($rate, '0'), '.');
             }
 
-            //reminder
-            foreach($htmlOrgDet::str_get_html($data)->find('.reminder_paragraph') as $desc){
-                $updateData['schedule'] = trim($desc->plaintext);
+            //schedule
+            if (!empty($htmlOrgDet::str_get_html($data)->find('.reminder_paragraph'))) {
+
+                foreach ($htmlOrgDet::str_get_html($data)->find('.reminder_paragraph') as $desc) {
+
+
+                    $updateData['schedule'] = trim($desc->plaintext);
+
+                }
+            }else{
+                $updateData['schedule'] = 'n';
             }
 
             //photo
@@ -178,9 +187,9 @@ class ParserController extends Controller{
 
             $this->actionUpdateOrg($updateData);
 
-            if( isset($updateData['reviews']) ) {
-                $this->actionUpdateReviewsOrg($updateData['reviews']);
-            }
+//            if( isset($updateData['reviews']) ) {
+//                $this->actionUpdateReviewsOrg($updateData['reviews']);
+//            }
         }
     }
 
