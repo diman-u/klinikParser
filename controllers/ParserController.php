@@ -12,6 +12,8 @@ use common\entities\OrganizationReview as ReviewOrg;
 use common\entities\Specialist;
 use common\entities\SpecialistReview as ReviewSpec;
 use common\entities\User;
+use common\entities\Catalog;
+use common\entities\OrganizationCatalog;
 
 
 class ParserController extends Controller{
@@ -74,7 +76,7 @@ class ParserController extends Controller{
 
         for($i=1; $i<=$num; $i++ ){
             //echo $i . "\n";
-            //$this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
+            $this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
         }
 
         // Specs
@@ -106,6 +108,26 @@ class ParserController extends Controller{
                 $updateData['address'] = trim($address->plaintext);
             }
 
+            //Services
+
+            if(!empty( $htmlOrgDet::str_get_html($data)->find('.kliniki_price_list') )){
+
+                foreach($htmlOrgDet::str_get_html($data)->find('td[itemprop=name]') as $serv0){
+                    $updateService['name'][] = trim($serv0->plaintext);
+                }
+
+                foreach($htmlOrgDet::str_get_html($data)->find('.kliniki_price_list td span') as $serv0){
+
+                    if( trim($serv0->plaintext) != 'Цена в рублях' ){
+                        $price = $serv0->plaintext;
+                        $price = str_replace('руб.', '', $price);
+                        //$price = preg_replace('/\s+/', '_', trim($price))
+                        $price = number_format($price);
+                        $updateService['price'][] = $price;
+                    }
+                }
+            }
+
             //desc
             foreach($htmlOrgDet::str_get_html($data)->find('.clinic_details_fullsize h2') as $desc){
                 $str = strip_tags($desc->next_sibling('p'));
@@ -125,9 +147,7 @@ class ParserController extends Controller{
 
                 foreach ($htmlOrgDet::str_get_html($data)->find('.reminder_paragraph') as $desc) {
 
-
                     $updateData['schedule'] = trim($desc->plaintext);
-
                 }
             }else{
                 $updateData['schedule'] = 'n';
@@ -187,6 +207,12 @@ class ParserController extends Controller{
 //            }
 
             $this->actionUpdateOrg($updateData);
+
+            if(isset($updateService)){
+
+                $updateService['link'] = $updateData['link'];
+                $this->actionUpdateServicesOrg($updateService);
+            }
 
 //            if( isset($updateData['reviews']) ) {
 //                $this->actionUpdateReviewsOrg($updateData['reviews']);
@@ -396,6 +422,39 @@ class ParserController extends Controller{
                 echo "Запись в отзывы добавлена\n";
             }
         }
+    }
+
+    public function actionUpdateServicesOrg($data) {
+
+        $orgServ = new OrganizationCatalog();
+        $catalog = new Catalog();
+        $idOrg = Organization::findOne(['link' => $data['link']]);
+
+
+        foreach ($data['name'] as $key=>$value) {
+
+            if ( Catalog::find()->where(['title'=>$value])->exists()) {
+                $idCat = Catalog::findOne(['title'=>$value]);
+            }else{
+                $catalog->parentId = null;
+                $catalog->title = $value;
+                $catalog->save();
+                $idCat = Catalog::findOne(['title'=>$value]);
+            }
+
+            $orgServ->catalogId = isset($idCat->id)? $idCat->id : 1;
+            $orgServ->organizationId = isset($idOrg->id)? $idOrg->id : 0;
+            $orgServ->price = isset($data['price'][$key])? $data['price'][$key] : 0;
+            //$orgServ->price = 1000;
+            $orgServ->time = isset($data['time'][$key])? $data['time'][$key] : null;
+            if($orgServ->save()){
+                echo "Запись в сервисы добавлена\n";
+            }
+            die();
+        }
+
+        die();
+
     }
 
 }
