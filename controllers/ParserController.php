@@ -22,9 +22,9 @@ class ParserController extends Controller{
 
     public function __construct() {
         $this->getCity();
-        Yii::$app->db->createCommand()->truncateTable('organization')->execute();
+        //Yii::$app->db->createCommand()->truncateTable('organization')->execute();
         Yii::$app->db->createCommand()->truncateTable('organization_review')->execute();
-        Yii::$app->db->createCommand()->truncateTable('specialist')->execute();
+        //Yii::$app->db->createCommand()->truncateTable('specialist')->execute();
         Yii::$app->db->createCommand()->truncateTable('specialist_review')->execute();
     }
 
@@ -73,15 +73,16 @@ class ParserController extends Controller{
         $num = ($count[0] % 10 != 0) ? ceil($count[0]/10) : $count[0]/10;
 
         for($i=1; $i<=$num; $i++ ){
-            echo $i . "\n";
-            $this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
+            //echo $i . "\n";
+            //$this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
         }
 
         // Specs
         $num = ($count[1] % 10 != 0) ? ceil($count[1]/10) : $count[1]/10;
 
         for($i=1; $i<=$num; $i++ ){
-            //$this->specialist( $this->domain . $this->city . '/doctors/all/page/' . $i );
+            echo $i . "\n";
+            $this->specialist( $this->domain . $this->city . '/doctors/all/page/' . $i );
         }
     }
 
@@ -207,6 +208,16 @@ class ParserController extends Controller{
             $data = $this->connect($domain . $element->href);
             $updateData['link'] = $element->href;
 
+            // OrganizationId
+            if (!empty($htmlDocDet::str_get_html($data)->find('.clinic_header a'))) {
+
+                foreach ($htmlDocDet::str_get_html($data)->find('.clinic_header a') as $title) {
+                    $updateData['OrganizationId'] = $title->href;
+                }
+            } else {
+                $updateData['OrganizationId'] = 0;
+            }
+
             //Name
             foreach($htmlDocDet::str_get_html($data)->find('h1[itemprop=name]') as $name){
                 $updateData['name'] = $name->plaintext;
@@ -217,30 +228,28 @@ class ParserController extends Controller{
                 $updateData['desc'] = strip_tags($desc);
             }
 
-            //fullDesc
-//            foreach($htmlDocDet::str_get_html($data)->find('[itemprop=description]') as $desc){
-//                $fixed_str = preg_replace('/[\s]{2,}/', ' ', $desc->plaintext);
-//                $updateData['fullDesc'] = $fixed_str;
-//            }
-
             // Photo
             foreach($htmlDocDet::str_get_html($data)->find('.kliniki_doctor_photo img') as $photos){
                 $updateData['photo'] =  $photos->src;
             }
 
             // Price
-            foreach($htmlDocDet::str_get_html($data)->find('[itemprop=priceRange]') as $price){
+            if(!empty($htmlDocDet::str_get_html($data)->find('[itemprop=priceRange]'))) {
 
-                $price = str_replace('руб.', '', $price->plaintext);
-                $price = str_replace(' ', '', $price);
-                $price = preg_replace('/\s+/', ' ', $price);
-                $price = str_replace("	", " ", $price);
-                $price = preg_replace('!\s++!u', ' ', $price);
-                while( strpos($price,"  ")!==false){
-                    $price = str_replace("  ", " ", $price);
+                foreach ($htmlDocDet::str_get_html($data)->find('[itemprop=priceRange]') as $price) {
+                    $price = str_replace('руб.', '', $price->plaintext);
+                    $price = str_replace(' ', '', $price);
+                    $price = preg_replace('/\s+/', ' ', $price);
+                    $price = str_replace("	", " ", $price);
+                    $price = preg_replace('!\s++!u', ' ', $price);
+                    while (strpos($price, "  ") !== false) {
+                        $price = str_replace("  ", " ", $price);
+                    }
+                    //$price = number_format($price, 2, '.', '');
+                    $updateData['price'] = rtrim(rtrim($price, '0'), '.');
                 }
-                //$price = number_format($price, 2, '.', '');
-                $updateData['price'] = rtrim(rtrim($price, '0'), '.');
+            }else{
+                $updateData['price'] = 0;
             }
 
             // Services
@@ -291,7 +300,7 @@ class ParserController extends Controller{
             }
 
             $this->actionUpdateSpec($updateData);
-            $this->actionUpdateReviewsSpec($updateReviews);
+            //$this->actionUpdateReviewsSpec($updateReviews);
         }
     }
 
@@ -321,11 +330,16 @@ class ParserController extends Controller{
 
     public function actionUpdateSpec($data) {
 
+        //print_r($data);
         $specEnt = new Parser();
         $isSpec = $specEnt::find()->where(['link'=>$data['link']])->exists();
+        $org = new Organization();
+        $orgId = $org::find()->where(['link'=>$data['OrganizationId']])->one();
+        $orgId = (empty($orgId))? 0 : $orgId->id ;
 
-        if ( !$isSpec ){    print_r($data['link']);
+        if ( !$isSpec ){
             $specEnt->name = $data['name'];
+            $specEnt->organizationId = $orgId;
             $specEnt->link = $data['link'];
             $specEnt->description = $data['desc'];
             $specEnt->photo = $data['photo'];
@@ -337,10 +351,10 @@ class ParserController extends Controller{
             $specEnt->createdAt = 18082018;
             $specEnt->organizationId = 1;
             if( $specEnt->save() ){
-                echo "Запись добавлена\n";
+                echo "Специалист добавлен\n";
             }
         }else{
-            echo "Запись существует\n";
+            echo "Специалист существует\n";
         }
     }
 
