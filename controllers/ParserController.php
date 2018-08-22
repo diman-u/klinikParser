@@ -90,6 +90,7 @@ class ParserController extends Controller{
 
     public function organizations($url) {
 
+        echo $url . "\n";
         $domain = "http://kliniki-online.ru";
         $data = $this->connect($url);
         $htmlOrgList = new SimpleHTMLDom();
@@ -188,7 +189,7 @@ class ParserController extends Controller{
                     $data = $this->connect($url);
 
                     foreach ($htmlOrgDet::str_get_html($data)->find('[itemprop=description]') as $desc) {
-                        echo $revs[] = strip_tags($desc) . "\n";
+                        $revs[] = strip_tags($desc);
                     }
 
                     foreach ($htmlOrgDet::str_get_html($data)->find('p.kliniki_review_color') as $createdAt) {
