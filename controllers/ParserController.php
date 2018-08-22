@@ -110,7 +110,7 @@ class ParserController extends Controller{
 
             //Services
 
-            if(!empty( $htmlOrgDet::str_get_html($data)->find('.kliniki_price_list') )){
+            if (!empty( $htmlOrgDet::str_get_html($data)->find('.kliniki_price_list') )) {
 
                 foreach($htmlOrgDet::str_get_html($data)->find('td[itemprop=name]') as $serv0){
                     $updateService['name'][] = trim($serv0->plaintext);
@@ -121,8 +121,8 @@ class ParserController extends Controller{
                     if( trim($serv0->plaintext) != 'Цена в рублях' ){
                         $price = $serv0->plaintext;
                         $price = str_replace('руб.', '', $price);
-                        //$price = preg_replace('/\s+/', '_', trim($price))
-                        $price = number_format($price);
+                        $price = preg_replace('/\s+/', '', trim($price));
+                        //$price = number_format($price);
                         $updateService['price'][] = $price;
                     }
                 }
@@ -164,59 +164,62 @@ class ParserController extends Controller{
                 $updateData['logo'] = "";
             }
 
-            //Reviews
+        //Reviews
 
-            foreach($htmlOrgDet::str_get_html($data)->find('.js-book-button') as $dataid){
-                 $idOrg = $dataid->getAttribute('data-id');
+            //id организации
+            foreach($htmlOrgDet::str_get_html($data)->find('.online_appointment_container .js-book-button') as $dataid){
+                $idOrg = $dataid->getAttribute('data-id');
             }
 
-            $providerCode = str_replace('/'.$this->city.'/', '', $updateData['link']);
-            $url = $domain . "/reviews/". $idOrg ."/page/2?cityCode=". $this->city ."&typeCode=clinic&providerCode=" . $providerCode;
-            $data = $this->connect($url);
+            if (!empty($htmlOrgDet::str_get_html($data)->find('.js-switch-tab-review'))) {
 
-            foreach($htmlOrgDet::str_get_html($data)->find('[itemprop=description]') as $desc){
-                $revs[] = strip_tags($desc);
+                //Вычисление кол-ва ajax запросов
+                foreach ($htmlOrgDet::str_get_html($data)->find('.js-switch-tab-review') as $count) {
+                    $countRew = substr(trim($count->plaintext), 0, -11);
+                }
+
+                $count = ceil((integer)$countRew / 10);
+
+                for ($i = 1; $i <= $count; $i++) {
+
+                    // Формирование url
+                    $providerCode = str_replace('/' . $this->city . '/', '', $updateData['link']);
+                    $url = $domain . "/reviews/" . $idOrg . "/page/" . $i . "?cityCode=" . $this->city . "&typeCode=clinic&providerCode=" . $providerCode;
+                    $data = $this->connect($url);
+
+                    foreach ($htmlOrgDet::str_get_html($data)->find('[itemprop=description]') as $desc) {
+                        echo $revs[] = strip_tags($desc) . "\n";
+                    }
+
+                    foreach ($htmlOrgDet::str_get_html($data)->find('p.kliniki_review_color') as $createdAt) {
+                        $created[] = strip_tags($createdAt->plaintext);
+                    }
+
+                    foreach ($htmlOrgDet::str_get_html($data)->find('.smile itemprop="ratingValue"') as $rating) {
+                        $like[] = $rating->getAttribute('content');
+                    }
+
+                    if (isset($revs)) {
+                        $updateData['reviews']['text'] = $revs;
+                        //Вопрос
+                        $updateData['reviews']['createdAt'] = $created;
+                        $updateData['reviews']['rating'] = $like;
+                        $updateData['reviews']['link'] = $updateData['link'];
+                        unset($revs);
+                    }
+
+                    if (isset($updateData['reviews'])) {
+                        $this->actionUpdateReviewsOrg($updateData['reviews']);
+                    }
+                }
             }
-
-            foreach($htmlOrgDet::str_get_html($data)->find('p.kliniki_review_color') as $createdAt){
-                $created[] = strip_tags($createdAt->plaintext);
-            }
-
-            foreach($htmlOrgDet::str_get_html($data)->find('span.kliniki_review_color') as $user){
-                $userId[] = trim(strip_tags($user->plaintext));
-            }
-
-            foreach($htmlOrgDet::str_get_html($data)->find('.smile itemprop="ratingValue"') as $rating){
-                $like[] = $rating->getAttribute('content');
-            }
-
-            if(isset($revs)){
-                $updateData['reviews']['text'] = $revs;
-                //Вопрос
-                $updateData['reviews']['createdAt'] = $created;
-                $updateData['reviews']['rating'] = $like;
-                $updateData['reviews']['userId'] = $userId;
-                $updateData['reviews']['link'] = $updateData['link'];
-                unset($revs);
-            }
-
-            //doc
-//            foreach($htmlOrgDet::str_get_html($data)->find('.kliniki_profile_doctors .list-view .kliniki_experts_title a') as $docs){
-//                //$updateData['docs'] = $docs->plaintext . "\n";
-//                //echo $this->domain . $docs->href . "\n";
-//            }
 
             $this->actionUpdateOrg($updateData);
 
-            if(isset($updateService)){
-
+            if (isset($updateService)) {
                 $updateService['link'] = $updateData['link'];
                 $this->actionUpdateServicesOrg($updateService);
             }
-
-//            if( isset($updateData['reviews']) ) {
-//                $this->actionUpdateReviewsOrg($updateData['reviews']);
-//            }
         }
     }
 
@@ -386,21 +389,22 @@ class ParserController extends Controller{
 
     public function actionUpdateReviewsOrg($data) {
 
-        $revEnt = new ReviewOrg();
         $user = new User();
         $userID = $user::find()->one();
-        $org = new Organization();
-        $idOrg = $org::find()->where(['link'=>$data['link']])->one();
+        $idOrg = Organization::findOne(['link'=>$data['link']]);
 
-        foreach ($data['text'] as $value){
+        for($i=0; $i<=count($data['text'])-1; $i++){
+            $revEnt = new ReviewOrg();
             $revEnt->userId = $userID->id;
             $revEnt->organizationId = $idOrg->id;
-            $revEnt->text = $value;
-            $revEnt->rating = $data['rating'];
-            $revEnt->createdAt = $data['createdAt'];
+            $revEnt->text = $data['text'][$i];
+            $revEnt->rating = 1;
+            $revEnt->createdAt = $data['createdAt'][$i];
+
             if($revEnt->save()){
                 echo "Запись в отзывы добавлена\n";
             }
+            unset($revEnt);
         }
     }
 
