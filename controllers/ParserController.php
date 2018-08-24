@@ -75,22 +75,19 @@ class ParserController extends Controller{
         $num = ($count[0] % 10 != 0) ? ceil($count[0]/10) : $count[0]/10;
 
         for($i=1; $i<=$num; $i++ ){
-            //echo $i . "\n";
-            $this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
+            //$this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
         }
 
         // Specs
         $num = ($count[1] % 10 != 0) ? ceil($count[1]/10) : $count[1]/10;
 
         for($i=1; $i<=$num; $i++ ){
-            echo $i . "\n";
             $this->specialist( $this->domain . $this->city . '/doctors/all/page/' . $i );
         }
     }
 
     public function organizations($url) {
 
-        echo $url . "\n";
         $domain = "http://kliniki-online.ru";
         $data = $this->connect($url);
         $htmlOrgList = new SimpleHTMLDom();
@@ -202,7 +199,6 @@ class ParserController extends Controller{
 
                     if (isset($revs)) {
                         $updateData['reviews']['text'] = $revs;
-                        //Вопрос
                         $updateData['reviews']['createdAt'] = $created;
                         $updateData['reviews']['rating'] = $like;
                         $updateData['reviews']['link'] = $updateData['link'];
@@ -212,15 +208,16 @@ class ParserController extends Controller{
                     if (isset($updateData['reviews'])) {
                         $this->actionUpdateReviewsOrg($updateData['reviews']);
                     }
+
                 }
             }
 
             $this->actionUpdateOrg($updateData);
 
-            if (isset($updateService)) {
-                $updateService['link'] = $updateData['link'];
-                $this->actionUpdateServicesOrg($updateService);
-            }
+//            if (isset($updateService)) {
+//                $updateService['link'] = $updateData['link'];
+//                $this->actionUpdateServicesOrg($updateService);
+//            }
         }
     }
 
@@ -237,6 +234,7 @@ class ParserController extends Controller{
 
             $data = $this->connect($domain . $element->href);
             $updateData['link'] = $element->href;
+            $updateReviews['link'] = $element->href;
 
             // OrganizationId
             if (!empty($htmlDocDet::str_get_html($data)->find('.clinic_header a'))) {
@@ -301,36 +299,45 @@ class ParserController extends Controller{
             }
 
             //Reviews
-            foreach($htmlDocDet::str_get_html($data)->find('.js-book-button') as $dataid){
-                $idDoc = $dataid->getAttribute('data-id');
-            }
+            if(!empty( $htmlDocDet::str_get_html($data)->find('.kliniki_profile_reviews_count') )) {
 
-            //url
-            $providerCode = str_replace('/'.$this->city.'/', '', $updateData['link']);
-            $url = $domain . "/reviews/". $idDoc ."/page/2?cityCode=". $this->city ."&typeCode=doctor&providerCode=" . $providerCode;
-            $data = $this->connect($url);
+                foreach ($htmlDocDet::str_get_html($data)->find('.kliniki_profile_reviews_count') as $count) {
+                    (integer)$str = preg_replace("/[^0-9]/", '', trim($count->plaintext));
+                    $count = ceil(($str / 10));
+                }
 
-            //Text
-            foreach($htmlDocDet::str_get_html($data)->find('[itemprop=description]') as $desc){
-                 $revs[] = strip_tags($desc);
-            }
+                foreach ($htmlDocDet::str_get_html($data)->find('.js-book-button') as $dataid) {
+                    $idDoc = $dataid->getAttribute('data-id');
+                    echo "\n" . $idDoc . "\n";
+                }
 
-            foreach($htmlDocDet::str_get_html($data)->find('p.kliniki_review_color') as $createdAt){
-                $updateReviews['created'] = strip_tags($createdAt->plaintext);
-            }
+                for ($i = 1; $i <= $count; $i++) {
 
-            foreach($htmlDocDet::str_get_html($data)->find('.smile itemprop="ratingValue"') as $rating){
-                $updateReviews['rating'] = $rating->getAttribute('content');
-            }
+                    //url
+                    $providerCode = str_replace('/' . $this->city . '/', '', $updateData['link']);
+                    $url = $domain . "/reviews/" . $idDoc . "/page/" . $i . "?cityCode=" . $this->city . "&typeCode=doctor&providerCode=" . $providerCode;
+                    $data = $this->connect($url);
 
-            if(isset($revs)){
-                $updateReviews['text'] = $revs;
-                $updateReviews['link'] = $updateData['link'];
-                unset($revs);
+                    //Text
+                    foreach ($htmlDocDet::str_get_html($data)->find('[itemprop=description]') as $desc) {
+                        $updateReviews['text'][] = strip_tags($desc);
+                    }
+
+                    foreach ($htmlDocDet::str_get_html($data)->find('p.kliniki_review_color') as $createdAt) {
+                        $updateReviews['created'][] = strip_tags($createdAt->plaintext);
+                    }
+
+                    foreach ($htmlDocDet::str_get_html($data)->find('.smile itemprop="ratingValue"') as $rating) {
+                        $updateReviews['rating'][] = $rating->getAttribute('content');
+                    }
+                }
             }
 
             $this->actionUpdateSpec($updateData);
-            //$this->actionUpdateReviewsSpec($updateReviews);
+            if(isset($updateReviews)){
+                $this->actionUpdateReviewsSpec($updateReviews);
+                unset($updateReviews);
+            }
         }
     }
 
@@ -360,7 +367,6 @@ class ParserController extends Controller{
 
     public function actionUpdateSpec($data) {
 
-        //print_r($data);
         $specEnt = new Parser();
         $isSpec = $specEnt::find()->where(['link'=>$data['link']])->exists();
         $org = new Organization();
@@ -394,10 +400,16 @@ class ParserController extends Controller{
         $userID = $user::find()->one();
         $idOrg = Organization::findOne(['link'=>$data['link']]);
 
+        if(empty($idOrg)){
+            $idOrg = 1;
+        }else{
+            $idOrg = $idOrg->id;
+        }
+
         for($i=0; $i<=count($data['text'])-1; $i++){
             $revEnt = new ReviewOrg();
             $revEnt->userId = $userID->id;
-            $revEnt->organizationId = $idOrg->id;
+            $revEnt->organizationId = $idOrg;
             $revEnt->text = $data['text'][$i];
             $revEnt->rating = 1;
             $revEnt->createdAt = $data['createdAt'][$i];
@@ -411,20 +423,23 @@ class ParserController extends Controller{
 
     public function actionUpdateReviewsSpec($data) {
 
+
+        print_r($data);
         $user = new User();
         $userID = $user::find()->one();
-        $specEnt = new ReviewSpec();
+
         $spec = new Specialist();
         $idSpec = $spec::find()->where(['link'=>$data['link']])->one();
 
         foreach ($data['text'] as $value){
+            $specEnt = new ReviewSpec();
             $specEnt->userId = $userID->id;
             $specEnt->specialistId = $idSpec->id;
             $specEnt->text = $value;
             $specEnt->rating = $data['rating'];
             $specEnt->createdAt = $data['created'];
             if($specEnt->save()){
-                echo "Запись в отзывы добавлена\n";
+                //echo "Запись в отзывы добавлена\n";
             }
         }
     }
@@ -455,11 +470,7 @@ class ParserController extends Controller{
             if($orgServ->save()){
                 echo "Запись в сервисы добавлена\n";
             }
-            die();
         }
-
-        die();
-
     }
 
 }
