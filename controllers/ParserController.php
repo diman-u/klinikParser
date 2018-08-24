@@ -303,7 +303,7 @@ class ParserController extends Controller{
 
                 foreach ($htmlDocDet::str_get_html($data)->find('.kliniki_profile_reviews_count') as $count) {
                     (integer)$str = preg_replace("/[^0-9]/", '', trim($count->plaintext));
-                    echo "\n" . $count = ceil(($str / 10));
+                    $count = ceil(($str / 10));
                 }
 
                 foreach ($htmlDocDet::str_get_html($data)->find('.js-book-button') as $dataid) {
@@ -332,11 +332,10 @@ class ParserController extends Controller{
                 }
 
                 if (isset($revs)) {
-                    echo "\n" . count($revs);
                     $updateData['reviews']['text'] = $revs;
                     $updateData['reviews']['created'] = $created;
                     $updateData['reviews']['rating'] = $like;
-                    echo "\n" . $updateData['reviews']['link'] = $updateData['link'];
+                    $updateData['reviews']['link'] = $updateData['link'];
                     unset($revs);
                 }
             }
@@ -447,7 +446,6 @@ class ParserController extends Controller{
                 echo "Запись в отзывы добавлена\n";
             }
         }
-        //unset($updateData);
     }
 
     public function actionUpdateServicesOrg($data) {
