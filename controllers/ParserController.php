@@ -303,40 +303,47 @@ class ParserController extends Controller{
 
                 foreach ($htmlDocDet::str_get_html($data)->find('.kliniki_profile_reviews_count') as $count) {
                     (integer)$str = preg_replace("/[^0-9]/", '', trim($count->plaintext));
-                    $count = ceil(($str / 10));
+                    echo "\n" . $count = ceil(($str / 10));
                 }
 
                 foreach ($htmlDocDet::str_get_html($data)->find('.js-book-button') as $dataid) {
                     $idDoc = $dataid->getAttribute('data-id');
-                    echo "\n" . $idDoc . "\n";
                 }
 
-                for ($i = 1; $i <= $count; $i++) {
+                for ($i = 2; $i <= $count+1; $i++) {
 
                     //url
                     $providerCode = str_replace('/' . $this->city . '/', '', $updateData['link']);
-                    $url = $domain . "/reviews/" . $idDoc . "/page/" . $i . "?cityCode=" . $this->city . "&typeCode=doctor&providerCode=" . $providerCode;
+                    echo "\n" . $url = $domain . "/reviews/" . $idDoc . "/page/" . $i . "?cityCode=" . $this->city . "&typeCode=doctor&providerCode=" . $providerCode;
                     $data = $this->connect($url);
 
                     //Text
-                    foreach ($htmlDocDet::str_get_html($data)->find('[itemprop=description]') as $desc) {
-                        $updateReviews['text'][] = strip_tags($desc);
+                    foreach ($htmlDocDet::str_get_html($data)->find('#reviews-list p.kliniki_review_text') as $desc) {
+                        $revs[] = strip_tags($desc);
                     }
 
                     foreach ($htmlDocDet::str_get_html($data)->find('p.kliniki_review_color') as $createdAt) {
-                        $updateReviews['created'][] = strip_tags($createdAt->plaintext);
+                        $created[] = strip_tags($createdAt->plaintext);
                     }
 
                     foreach ($htmlDocDet::str_get_html($data)->find('.smile itemprop="ratingValue"') as $rating) {
-                        $updateReviews['rating'][] = $rating->getAttribute('content');
+                        $like[] = $rating->getAttribute('content');
                     }
+                }
+
+                if (isset($revs)) {
+                    echo "\n" . count($revs);
+                    $updateData['reviews']['text'] = $revs;
+                    $updateData['reviews']['created'] = $created;
+                    $updateData['reviews']['rating'] = $like;
+                    echo "\n" . $updateData['reviews']['link'] = $updateData['link'];
+                    unset($revs);
                 }
             }
 
             $this->actionUpdateSpec($updateData);
-            if(isset($updateReviews)){
-                $this->actionUpdateReviewsSpec($updateReviews);
-                unset($updateReviews);
+            if(isset($updateData['reviews'])){
+                $this->actionUpdateReviewsSpec($updateData['reviews']);
             }
         }
     }
@@ -423,8 +430,6 @@ class ParserController extends Controller{
 
     public function actionUpdateReviewsSpec($data) {
 
-
-        print_r($data);
         $user = new User();
         $userID = $user::find()->one();
 
@@ -439,9 +444,10 @@ class ParserController extends Controller{
             $specEnt->rating = $data['rating'];
             $specEnt->createdAt = $data['created'];
             if($specEnt->save()){
-                //echo "Запись в отзывы добавлена\n";
+                echo "Запись в отзывы добавлена\n";
             }
         }
+        //unset($updateData);
     }
 
     public function actionUpdateServicesOrg($data) {
