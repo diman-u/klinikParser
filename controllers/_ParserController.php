@@ -2,17 +2,15 @@
 
 namespace console\controllers;
 
-use common\entities\OrganizationReview;
-use common\entities\SpecialistReview;
-use common\enums\OrganizationStatus;
-use common\enums\SpecialistStatus;
 use Yii;
 use yii\console\Controller;
-use keltstr\simplehtmldom\SimpleHTMLDom;
-//use darkdrim\simplehtmldom\SimpleHTMLDom;
+use console\models\Parser;
+use darkdrim\simplehtmldom\SimpleHTMLDom;
 use common\entities\City;
 use common\entities\Organization;
+use common\entities\OrganizationReview as ReviewOrg;
 use common\entities\Specialist;
+use common\entities\SpecialistReview as ReviewSpec;
 use common\entities\User;
 use common\entities\Catalog;
 use common\entities\OrganizationCatalog;
@@ -26,14 +24,10 @@ class ParserController extends Controller{
 
     public function __construct() {
         $this->getCity();
-
-        $orgRevTbl = OrganizationReview::tableName();
-        $orgTbl = Organization::tableName();
-        Yii::$app->db->createCommand()->setSql("delete r from {$orgRevTbl} as r inner join {$orgTbl} as o on o.id = r.organizationId where o.isParsed = 1")->execute();
-
-        $specRevTbl = SpecialistReview::tableName();
-        $specTbl = Specialist::tableName();
-        Yii::$app->db->createCommand()->setSql("delete r from {$specRevTbl} as r inner join {$specTbl} as s on s.id = r.specialistId where s.isParsed = 1")->execute();
+        //Yii::$app->db->createCommand()->truncateTable('organization')->execute();
+        Yii::$app->db->createCommand()->truncateTable('organization_review')->execute();
+        //Yii::$app->db->createCommand()->truncateTable('specialist')->execute();
+        Yii::$app->db->createCommand()->truncateTable('specialist_review')->execute();
     }
 
     public function connect($url){
@@ -54,17 +48,13 @@ class ParserController extends Controller{
 
         $data = $this->connect($this->domain);
         $htmlCityList = new SimpleHTMLDom();
+        $cityTable = new City();
 
-        foreach($htmlCityList::str_get_html($data)->find('.city_selector a') as $cityData) {
-            $cityTitle = $cityData->plaintext;
-
-            if (!$city = City::find()->where('upper(title) = :title', [':title' => strtoupper($cityTitle)])->one()) {
-                echo "Город {$cityTitle} не найден в БД";
-                continue;
-            }
-
-            $this->cityID = $city->getPrimaryKey();
-            $this->city = $cityData->attr['data-city-code'];
+        foreach($htmlCityList::str_get_html($data)->find('.city_selector a') as $city) {
+            $cityTitle = $city->plaintext;
+            $objCity = $cityTable::find()->where(['title' => $cityTitle])->one();
+            $this->cityID = $objCity->id;
+            $this->city = $city->attr['data-city-code'];
             //}
 
             $this->getCountOrg($this->domain . $this->city . '/clinics/all/');
@@ -85,7 +75,7 @@ class ParserController extends Controller{
         $num = ($count[0] % 10 != 0) ? ceil($count[0]/10) : $count[0]/10;
 
         for($i=1; $i<=$num; $i++ ){
-            $this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
+            //$this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
         }
 
         // Specs
@@ -215,18 +205,19 @@ class ParserController extends Controller{
                         unset($revs);
                     }
 
+                    if (isset($updateData['reviews'])) {
+                        $this->actionUpdateReviewsOrg($updateData['reviews']);
+                    }
+
                 }
             }
 
             $this->actionUpdateOrg($updateData);
-            if (isset($updateData['reviews'])) {
-                $this->actionUpdateReviewsOrg($updateData['reviews']);
-            }
 
-            if (isset($updateService)) {
-                $updateService['link'] = $updateData['link'];
-                $this->actionUpdateServicesOrg($updateService);
-            }
+//            if (isset($updateService)) {
+//                $updateService['link'] = $updateData['link'];
+//                $this->actionUpdateServicesOrg($updateService);
+//            }
         }
     }
 
@@ -297,7 +288,7 @@ class ParserController extends Controller{
             // Stage
             foreach($htmlDocDet::str_get_html($data)->find('.kliniki_doctor_resume') as $stage){
                 $info = $stage->find("p", 0);
-                $updateData['experience'] = $str = preg_replace("/[^0-9]/", '', $info->plaintext);
+                $updateData['experiance'] = $str = preg_replace("/[^0-9]/", '', $info->plaintext);
             }
 
             // Rating
@@ -359,20 +350,20 @@ class ParserController extends Controller{
 // Классы для работы с БД
 
     public function actionUpdateOrg($data) {
-        $orgIsExists = Organization::find()->where(['parserLink'=>$data['link']])->exists();
 
-        if ( !$orgIsExists ){
-            $org = new Organization();
-            $org->isParsed = true;
-            $org->name = $data['name'];
-            $org->cityId = $this->cityID;
-            $org->parserLink = $data['link'];
-            $org->address = $data['address'];
-            $org->rating = $data['rating'];
-            $org->schedule = $data['schedule'];
-            $org->logo = $data['logo'];
-            $org->status = OrganizationStatus::ACTIVE;
-            if($org->save()){
+        $orgEnt = new Organization();
+        $org = $orgEnt::find()->where(['link'=>$data['link']])->exists();
+
+        if ( !$org ){
+            $orgEnt->name = $data['name'];
+            $orgEnt->cityId = $this->cityID;
+            $orgEnt->link = $data['link'];
+            $orgEnt->address = $data['address'];
+            $orgEnt->rating = $data['rating'];
+            $orgEnt->schedule = $data['schedule'];
+            $orgEnt->logo = $data['logo'];
+            $orgEnt->status = 'active';
+            if($orgEnt->save()){
                 echo "Организация добавлена\n";
             }
         } else{
@@ -381,29 +372,27 @@ class ParserController extends Controller{
     }
 
     public function actionUpdateSpec($data) {
-        if (!$org = Organization::findOne(['parserLink'=>$data['OrganizationId']])) {
-            echo "Запись в отзывы НЕ добавлена, орагинизация не найдена ({$data['link']})\n";
-            return;
-        }
 
-        $specIsExists = Specialist::find()->where(['parserLink'=>$data['link']])->exists();
+        $specEnt = new Parser();
+        $isSpec = $specEnt::find()->where(['link'=>$data['link']])->exists();
+        $org = new Organization();
+        $orgId = $org::find()->where(['link'=>$data['OrganizationId']])->one();
+        $orgId = (empty($orgId))? 0 : $orgId->id ;
 
-        if ( !$specIsExists ){
-            $spec = new Specialist();
-            $org->isParsed = true;
-            $spec->name = $data['name'];
-            $spec->organizationId = $org->getPrimaryKey();
-            $spec->parserLink = $data['link'];
-            $spec->description = $data['desc'];
-            $spec->photo = $data['photo'];
-            $spec->cost = $data['price'];
+        if ( !$isSpec ){
+            $specEnt->name = $data['name'];
+            $specEnt->organizationId = $orgId;
+            $specEnt->link = $data['link'];
+            $specEnt->description = $data['desc'];
+            $specEnt->photo = $data['photo'];
+            $specEnt->cost = $data['price'];
             //$spec->service = $data['service'];
-            $spec->experience = $data['experience'];
-            $spec->rating = $data['rating'];
-            $spec->status = SpecialistStatus::ACTIVE;
-            $spec->createdAt = 18082018;
-            $spec->organizationId = 1;
-            if( $spec->save() ){
+            $specEnt->experience = $data['experiance'];
+            $specEnt->rating = $data['rating'];
+            $specEnt->status = 'active';
+            $specEnt->createdAt = 18082018;
+            $specEnt->organizationId = 1;
+            if( $specEnt->save() ){
                 echo "Специалист добавлен\n";
             }
         }else{
@@ -412,25 +401,26 @@ class ParserController extends Controller{
     }
 
     public function actionUpdateReviewsOrg($data) {
-        if (!$user = User::find()->one()) {
-            echo "Запись в отзывы НЕ добавлена, пользоватедль не найден\n";
-            return;
-        }
 
-        if (!$org = Organization::findOne(['parserLink'=>$data['link']])) {
-            echo "Запись в отзывы НЕ добавлена, орагинизация не найдена ({$data['link']})\n";
-            return;
+        $user = new User();
+        $userID = $user::find()->one();
+        $idOrg = Organization::findOne(['link'=>$data['link']]);
+
+        if(empty($idOrg)){
+            $idOrg = 1;
+        }else{
+            $idOrg = $idOrg->id;
         }
 
         for($i=0; $i<=count($data['text'])-1; $i++){
-            $orgReview = new OrganizationReview();
-            $orgReview->userId = $user->getPrimaryKey();
-            $orgReview->organizationId = $org->getPrimaryKey();
-            $orgReview->text = $data['text'][$i];
-            $orgReview->rating = rand(1,5);
-            $orgReview->createdAt = $data['createdAt'][$i];
+            $revEnt = new ReviewOrg();
+            $revEnt->userId = $userID->id;
+            $revEnt->organizationId = $idOrg;
+            $revEnt->text = $data['text'][$i];
+            $revEnt->rating = 1;
+            $revEnt->createdAt = $data['createdAt'][$i];
 
-            if($orgReview->save()){
+            if($revEnt->save()){
                 echo "Запись в отзывы добавлена\n";
             }
             unset($revEnt);
@@ -438,53 +428,51 @@ class ParserController extends Controller{
     }
 
     public function actionUpdateReviewsSpec($data) {
-        if (!$user = User::find()->one()) {
-            echo "Запись в отзывы спец. НЕ добавлена, пользоватедль не найден\n";
-            return;
-        }
 
-        if (!$spec = Specialist::findOne(['parserLink'=>$data['link']])) {
-            echo "Запись в отзывы спец. НЕ добавлена, специалист не найден ({$data['link']})\n";
-            return;
-        }
+        $user = new User();
+        $userID = $user::find()->one();
+
+        $spec = new Specialist();
+        $idSpec = $spec::find()->where(['link'=>$data['link']])->one();
 
         foreach ($data['text'] as $value){
-            $specReview = new SpecialistReview();
-            $specReview->userId = $user->getPrimaryKey();
-            $specReview->specialistId = $spec->getPrimaryKey();
-            $specReview->text = $value;
-            $specReview->rating = $data['rating'];
-            $specReview->createdAt = $data['created'];
-            if($specReview->save()){
-                echo "Запись в отзывы спец. добавлена\n";
+            $specEnt = new ReviewSpec();
+            $specEnt->userId = $userID->id;
+            $specEnt->specialistId = $idSpec->id;
+            $specEnt->text = $value;
+            $specEnt->rating = $data['rating'];
+            $specEnt->createdAt = $data['created'];
+            if($specEnt->save()){
+                echo "Запись в отзывы добавлена\n";
             }
         }
     }
 
     public function actionUpdateServicesOrg($data) {
 
-        if (!$org = Organization::findOne(['parserLink' => $data['link']])) {
-            echo "Запись в услуги НЕ добавлена, организация не найдена ({$data['link']})\n";
-            return;
-        }
+        $orgServ = new OrganizationCatalog();
+        $catalog = new Catalog();
+        $idOrg = Organization::findOne(['link' => $data['link']]);
+
 
         foreach ($data['name'] as $key=>$value) {
 
-            if (!$catalog = Catalog::findOne(['title'=>$value])) {
-                $catalog = new Catalog();
+            if ( Catalog::find()->where(['title'=>$value])->exists()) {
+                $idCat = Catalog::findOne(['title'=>$value]);
+            }else{
                 $catalog->parentId = null;
                 $catalog->title = $value;
                 $catalog->save();
+                $idCat = Catalog::findOne(['title'=>$value]);
             }
 
-            $orgCaltalog = new OrganizationCatalog();
-            $orgCaltalog->catalogId = $catalog->getPrimaryKey();
-            $orgCaltalog->organizationId = $org->getPrimaryKey();
-            $orgCaltalog->price = isset($data['price'][$key])? $data['price'][$key] : 0;
-            //$orgCaltalog->price = 1000;
-            $orgCaltalog->time = isset($data['time'][$key])? $data['time'][$key] : null;
-            if($orgCaltalog->save()){
-                echo "Запись в услуги добавлена\n";
+            $orgServ->catalogId = isset($idCat->id)? $idCat->id : 1;
+            $orgServ->organizationId = isset($idOrg->id)? $idOrg->id : 0;
+            $orgServ->price = isset($data['price'][$key])? $data['price'][$key] : 0;
+            //$orgServ->price = 1000;
+            $orgServ->time = isset($data['time'][$key])? $data['time'][$key] : null;
+            if($orgServ->save()){
+                echo "Запись в сервисы добавлена\n";
             }
         }
     }
