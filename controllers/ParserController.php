@@ -2,7 +2,9 @@
 
 namespace console\controllers;
 
+use common\entities\OrganizationPhoto;
 use common\entities\OrganizationReview;
+use common\entities\SpecialistPhoto;
 use common\entities\SpecialistReview;
 use common\enums\OrganizationStatus;
 use common\enums\SpecialistStatus;
@@ -21,6 +23,7 @@ use common\entities\OrganizationCatalog;
 class ParserController extends Controller{
 
     public $domain = "http://kliniki-online.ru/";
+    public $domain2 = "http://kliniki-online.ru";
     public $city;
     public $cityID;
 
@@ -84,14 +87,14 @@ class ParserController extends Controller{
         // Organizations
         $num = ($count[0] % 10 != 0) ? ceil($count[0]/10) : $count[0]/10;
 
-        for($i=1; $i<=$num; $i++ ){
-            $this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
+        for ($i = 1; $i<=$num; $i++ ) {
+            //$this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
         }
 
         // Specs
         $num = ($count[1] % 10 != 0) ? ceil($count[1]/10) : $count[1]/10;
 
-        for($i=1; $i<=$num; $i++ ){
+        for ($i = 1; $i<=$num; $i++ ) {
             $this->specialist( $this->domain . $this->city . '/doctors/all/page/' . $i );
         }
     }
@@ -127,27 +130,26 @@ class ParserController extends Controller{
                 foreach($htmlOrgDet::str_get_html($data)->find('.kliniki_price_list td span') as $serv0){
 
                     if( trim($serv0->plaintext) != 'Цена в рублях' ){
-                        $price = $serv0->plaintext;
-                        $price = str_replace('руб.', '', $price);
-                        $price = preg_replace('/\s+/', '', trim($price));
-                        //$price = number_format($price);
-                        $updateService['price'][] = $price;
+                        $price = preg_replace( "/[^0-9]/", '', $serv0->plaintext );
+                        $updateService['price'][] = (int)$price;
                     }
                 }
             }
 
             //desc
             foreach($htmlOrgDet::str_get_html($data)->find('.clinic_details_fullsize h2') as $desc){
-                $str = strip_tags($desc->next_sibling('p'));
-                $fixed_str = preg_replace('/[\s]{2,}/', ' ', $str);
-                $updateData['desc'] = $fixed_str;
+                if($desc->plaintext=="Описание") {
+                    $str = strip_tags($desc->next_sibling('p'));
+                    $fixed_str = preg_replace('/[\s]{2,}/', ' ', $str);
+                    $updateData['desc'] = $fixed_str;
+                }
             }
 
             // Rating
             foreach($htmlOrgDet::str_get_html($data)->find('.kliniki_profile_rating') as $rev1){
                 $rate = str_replace('Рейтинг клиники ', '', $rev1->attr['title']);
                 $rate = number_format($rate, 2, '.', '');
-                $updateData['rating'] = rtrim(rtrim($rate, '0'), '.');
+                $updateData['rating'] = (float)rtrim(rtrim($rate, '0'), '.');
             }
 
             //schedule
@@ -162,14 +164,19 @@ class ParserController extends Controller{
             }
 
             //photo
-            foreach($htmlOrgDet::str_get_html($data)->find('.kliniki_preview_photos a') as $photos){
-                $ph[] = $photos->href;
+            foreach($htmlOrgDet::str_get_html($data)->find('.kliniki_profile_photos a') as $photos){
+                $photo['photo'][] = $photos->href;
             }
 
-            if(isset($ph)){
-                $updateData['logo'] = implode(', ', $ph);
-            } else {
-                $updateData['logo'] = "";
+            foreach($htmlOrgDet::str_get_html($data)->find('.kliniki_profile_photos a') as $photos){
+                $style = $photos->getAttribute('style');
+                $style = str_replace("background-image: url('", '', $style);
+                $style = str_replace("')", '', $style);
+                $photo['photoSmall'][] = $style;
+            }
+
+            if(isset($photo)){
+                $this->actionUpdatePhotoOrg($photo);
             }
 
         //Reviews
@@ -188,11 +195,11 @@ class ParserController extends Controller{
 
                 $count = ceil((integer)$countRew / 10);
 
-                for ($i = 1; $i <= $count; $i++) {
+                for ($i = 2; $i <= $count+1; $i++) {
 
                     // Формирование url
                     $providerCode = str_replace('/' . $this->city . '/', '', $updateData['link']);
-                    $url = $domain . "/reviews/" . $idOrg . "/page/" . $i . "?cityCode=" . $this->city . "&typeCode=clinic&providerCode=" . $providerCode;
+                    echo "\n" . $url = $domain . "/reviews/" . $idOrg . "/page/" . $i. "?cityCode=" . $this->city . "&typeCode=clinic&providerCode=" . $providerCode;
                     $data = $this->connect($url);
 
                     foreach ($htmlOrgDet::str_get_html($data)->find('[itemprop=description]') as $desc) {
@@ -203,7 +210,7 @@ class ParserController extends Controller{
                         $created[] = strip_tags($createdAt->plaintext);
                     }
 
-                    foreach ($htmlOrgDet::str_get_html($data)->find('.smile itemprop="ratingValue"') as $rating) {
+                    foreach ($htmlOrgDet::str_get_html($data)->find('.smile [itemprop="ratingValue"]') as $rating) {
                         $like[] = $rating->getAttribute('content');
                     }
 
@@ -212,16 +219,16 @@ class ParserController extends Controller{
                         $updateData['reviews']['createdAt'] = $created;
                         $updateData['reviews']['rating'] = $like;
                         $updateData['reviews']['link'] = $updateData['link'];
-                        unset($revs);
                     }
-
                 }
             }
 
             $this->actionUpdateOrg($updateData);
+
             if (isset($updateData['reviews'])) {
                 $this->actionUpdateReviewsOrg($updateData['reviews']);
             }
+
 
             if (isset($updateService)) {
                 $updateService['link'] = $updateData['link'];
@@ -265,25 +272,27 @@ class ParserController extends Controller{
                 $updateData['desc'] = strip_tags($desc);
             }
 
+            //fullDesc
+            foreach($htmlDocDet::str_get_html($data)->find('[itemprop=description]') as $desc){
+                $fixed_str = preg_replace('/[\s]{2,}/', ' ', $desc->plaintext);
+                $updateData['fullDesc'] = $fixed_str;
+            }
+
             // Photo
             foreach($htmlDocDet::str_get_html($data)->find('.kliniki_doctor_photo img') as $photos){
-                $updateData['photo'] =  $photos->src;
+                $photo =  $photos->src;
             }
+
+            $this->actionUpdatePhotoSpec($photo);
 
             // Price
             if(!empty($htmlDocDet::str_get_html($data)->find('[itemprop=priceRange]'))) {
 
                 foreach ($htmlDocDet::str_get_html($data)->find('[itemprop=priceRange]') as $price) {
-                    $price = str_replace('руб.', '', $price->plaintext);
-                    $price = str_replace(' ', '', $price);
-                    $price = preg_replace('/\s+/', ' ', $price);
-                    $price = str_replace("	", " ", $price);
-                    $price = preg_replace('!\s++!u', ' ', $price);
-                    while (strpos($price, "  ") !== false) {
-                        $price = str_replace("  ", " ", $price);
-                    }
-                    //$price = number_format($price, 2, '.', '');
-                    $updateData['price'] = rtrim(rtrim($price, '0'), '.');
+                    $price = preg_replace("/[^0-9]/", '', $price->plaintext);
+                    $price = number_format($price, 2, '.', '');
+                    $price = rtrim(rtrim($price, '0'), '.');
+                    $updateData['price'] = (int)$price;
                 }
             }else{
                 $updateData['price'] = 0;
@@ -297,14 +306,14 @@ class ParserController extends Controller{
             // Stage
             foreach($htmlDocDet::str_get_html($data)->find('.kliniki_doctor_resume') as $stage){
                 $info = $stage->find("p", 0);
-                $updateData['experience'] = $str = preg_replace("/[^0-9]/", '', $info->plaintext);
+                $updateData['experience'] = (int)preg_replace("/[^0-9]/", '', $info->plaintext);
             }
 
             // Rating
             foreach($htmlDocDet::str_get_html($data)->find('.kliniki_resource_ratings .kliniki_rating') as $rev1){
                 $rate = str_replace('Рейтинг врача ', '', $rev1->attr['title']);
                 $rate = number_format($rate, 2, '.', '');
-                $updateData['rating'] = rtrim(rtrim($rate, '0'), '.');
+                $updateData['rating'] = (float)rtrim(rtrim($rate, '0'), '.');
             }
 
             //Reviews
@@ -323,7 +332,7 @@ class ParserController extends Controller{
 
                     //url
                     $providerCode = str_replace('/' . $this->city . '/', '', $updateData['link']);
-                    echo "\n" . $url = $domain . "/reviews/" . $idDoc . "/page/" . $i . "?cityCode=" . $this->city . "&typeCode=doctor&providerCode=" . $providerCode;
+                    $url = $domain . "/reviews/" . $idDoc . "/page/" . $i . "?cityCode=" . $this->city . "&typeCode=doctor&providerCode=" . $providerCode;
                     $data = $this->connect($url);
 
                     //Text
@@ -336,7 +345,7 @@ class ParserController extends Controller{
                     }
 
                     foreach ($htmlDocDet::str_get_html($data)->find('.smile itemprop="ratingValue"') as $rating) {
-                        $like[] = $rating->getAttribute('content');
+                        $like[] = (float)$rating->getAttribute('content');
                     }
                 }
 
@@ -370,6 +379,7 @@ class ParserController extends Controller{
             $org->address = $data['address'];
             $org->rating = $data['rating'];
             $org->schedule = $data['schedule'];
+            $org->description = $data['desc'];
             $org->logo = $data['logo'];
             $org->status = OrganizationStatus::ACTIVE;
             if($org->save()){
@@ -397,12 +407,11 @@ class ParserController extends Controller{
             $spec->description = $data['desc'];
             $spec->photo = $data['photo'];
             $spec->cost = $data['price'];
-            //$spec->service = $data['service'];
             $spec->experience = $data['experience'];
             $spec->rating = $data['rating'];
             $spec->status = SpecialistStatus::ACTIVE;
             $spec->createdAt = 18082018;
-            $spec->organizationId = 1;
+            //$spec->organizationId = 1;
             if( $spec->save() ){
                 echo "Специалист добавлен\n";
             }
@@ -481,11 +490,48 @@ class ParserController extends Controller{
             $orgCaltalog->catalogId = $catalog->getPrimaryKey();
             $orgCaltalog->organizationId = $org->getPrimaryKey();
             $orgCaltalog->price = isset($data['price'][$key])? $data['price'][$key] : 0;
-            //$orgCaltalog->price = 1000;
             $orgCaltalog->time = isset($data['time'][$key])? $data['time'][$key] : null;
             if($orgCaltalog->save()){
                 echo "Запись в услуги добавлена\n";
             }
+        }
+    }
+
+    public function actionUpdatePhotoOrg($data) {
+
+//        if (!$org = Organization::findOne(['parserLink' => $data['link']])) {
+//            echo "Запись в фото НЕ добавлена, организация не найдена ({$data['link']})\n";
+//            return;
+//        }
+
+        foreach ($data['photo'] as $key=>$value) {
+
+            $orgPhoto = new OrganizationPhoto();
+            $orgPhoto->organizationId = 1;
+            $orgPhoto->photo = $this->domain2 . $data['photo'][$key];
+            $orgPhoto->photoSmall = $this->domain2 . $data['photoSmall'][$key];
+            $orgPhoto->createdAt = date('Ymd');
+            if($orgPhoto->save()){
+                echo "Запись в фото добавлена\n";
+            }
+        }
+        die();
+    }
+
+    public function actionUpdatePhotoSpec($data) {
+
+//        if (!$org = Organization::findOne(['parserLink' => $data['link']])) {
+//            echo "Запись в фото НЕ добавлена, организация не найдена ({$data['link']})\n";
+//            return;
+//        }
+
+        $specPhoto = new SpecialistPhoto();
+        $specPhoto->specialistId = null;
+        $specPhoto->photo = $this->domain2 . $data;
+        $specPhoto->photoSmall = $this->domain2 . $data;
+        $specPhoto->createdAt = date('Ymd');
+        if($specPhoto->save()){
+            echo "Запись в фото добавлена\n";
         }
     }
 
