@@ -94,7 +94,7 @@ class ParserController extends Controller{
         // Specs
         $num = ($count[1] % 10 != 0) ? ceil($count[1]/10) : $count[1]/10;
 
-        for ($i = 1; $i<=$num; $i++ ) {
+        for ($i = 10; $i<=$num; $i++ ) {
             $this->specialist( $this->domain . $this->city . '/doctors/all/page/' . $i );
         }
     }
@@ -175,10 +175,6 @@ class ParserController extends Controller{
                 $photo['photoSmall'][] = $style;
             }
 
-            if(isset($photo)){
-                $this->actionUpdatePhotoOrg($photo);
-            }
-
         //Reviews
 
             //id организации
@@ -199,7 +195,7 @@ class ParserController extends Controller{
 
                     // Формирование url
                     $providerCode = str_replace('/' . $this->city . '/', '', $updateData['link']);
-                    echo "\n" . $url = $domain . "/reviews/" . $idOrg . "/page/" . $i. "?cityCode=" . $this->city . "&typeCode=clinic&providerCode=" . $providerCode;
+                    $url = $domain . "/reviews/" . $idOrg . "/page/" . $i. "?cityCode=" . $this->city . "&typeCode=clinic&providerCode=" . $providerCode;
                     $data = $this->connect($url);
 
                     foreach ($htmlOrgDet::str_get_html($data)->find('[itemprop=description]') as $desc) {
@@ -225,6 +221,10 @@ class ParserController extends Controller{
 
             $this->actionUpdateOrg($updateData);
 
+            if(isset($photo)){
+                $this->actionUpdatePhotoOrg($photo, $updateData['link']);
+            }
+
             if (isset($updateData['reviews'])) {
                 $this->actionUpdateReviewsOrg($updateData['reviews']);
             }
@@ -249,6 +249,7 @@ class ParserController extends Controller{
         foreach($htmlDocList::str_get_html($data)->find('[data-ajax-zone=results] .kliniki_clinic_name a') as $element){
 
             $data = $this->connect($domain . $element->href);
+            $data = $this->connect('https://kliniki-online.ru/msk/doctor10466-romashenko-oksana-vladimirovna');
             $updateData['link'] = $element->href;
             $updateReviews['link'] = $element->href;
 
@@ -282,8 +283,6 @@ class ParserController extends Controller{
             foreach($htmlDocDet::str_get_html($data)->find('.kliniki_doctor_photo img') as $photos){
                 $photo =  $photos->src;
             }
-
-            $this->actionUpdatePhotoSpec($photo);
 
             // Price
             if(!empty($htmlDocDet::str_get_html($data)->find('[itemprop=priceRange]'))) {
@@ -359,8 +358,13 @@ class ParserController extends Controller{
             }
 
             $this->actionUpdateSpec($updateData);
+
             if(isset($updateData['reviews'])){
                 $this->actionUpdateReviewsSpec($updateData['reviews']);
+            }
+
+            if (isset($photo)) {
+                $this->actionUpdatePhotoSpec($photo, $updateData['link']);
             }
         }
     }
@@ -380,7 +384,7 @@ class ParserController extends Controller{
             $org->rating = $data['rating'];
             $org->schedule = $data['schedule'];
             $org->description = $data['desc'];
-            $org->logo = $data['logo'];
+            //$org->logo = $data['logo'];
             $org->status = OrganizationStatus::ACTIVE;
             if($org->save()){
                 echo "Организация добавлена\n";
@@ -405,7 +409,7 @@ class ParserController extends Controller{
             $spec->organizationId = $org->getPrimaryKey();
             $spec->parserLink = $data['link'];
             $spec->description = $data['desc'];
-            $spec->photo = $data['photo'];
+            //$spec->photo = $data['photo'];
             $spec->cost = $data['price'];
             $spec->experience = $data['experience'];
             $spec->rating = $data['rating'];
@@ -497,17 +501,17 @@ class ParserController extends Controller{
         }
     }
 
-    public function actionUpdatePhotoOrg($data) {
+    public function actionUpdatePhotoOrg($data, $link) {
 
-//        if (!$org = Organization::findOne(['parserLink' => $data['link']])) {
-//            echo "Запись в фото НЕ добавлена, организация не найдена ({$data['link']})\n";
-//            return;
-//        }
+        if (!$org = Organization::findOne(['parserLink'=>$link])) {
+            echo "Запись в отзывы НЕ добавлена, орагинизация не найдена ({$link})\n";
+            return;
+        }
 
         foreach ($data['photo'] as $key=>$value) {
 
             $orgPhoto = new OrganizationPhoto();
-            $orgPhoto->organizationId = 1;
+            $orgPhoto->organizationId = $org->getPrimaryKey();
             $orgPhoto->photo = $this->domain2 . $data['photo'][$key];
             $orgPhoto->photoSmall = $this->domain2 . $data['photoSmall'][$key];
             $orgPhoto->createdAt = date('Ymd');
@@ -515,19 +519,19 @@ class ParserController extends Controller{
                 echo "Запись в фото добавлена\n";
             }
         }
-        die();
     }
 
-    public function actionUpdatePhotoSpec($data) {
+    public function actionUpdatePhotoSpec($data, $link) {
 
-//        if (!$org = Organization::findOne(['parserLink' => $data['link']])) {
-//            echo "Запись в фото НЕ добавлена, организация не найдена ({$data['link']})\n";
-//            return;
-//        }
+        if (!$spec = Specialist::findOne(['parserLink'=>$link])) {
+            echo "Запись в фото спец. НЕ добавлена, специалист не найден ({$link})\n";
+            return;
+        }
+
 
         $specPhoto = new SpecialistPhoto();
-        $specPhoto->specialistId = null;
-        $specPhoto->photo = $this->domain2 . $data;
+        $specPhoto->specialistId = $spec->getPrimaryKey();
+        $specPhoto->photo = (isset($data)) ? $this->domain2 . $data : null;
         $specPhoto->photoSmall = $this->domain2 . $data;
         $specPhoto->createdAt = date('Ymd');
         if($specPhoto->save()){
