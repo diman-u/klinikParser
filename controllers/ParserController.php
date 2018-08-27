@@ -26,6 +26,8 @@ class ParserController extends Controller{
     public $domain2 = "http://kliniki-online.ru";
     public $city;
     public $cityID;
+    public $minCountReviews = 30;
+    public $maxCountReviews = 50;
 
     public function __construct() {
         $this->getCity();
@@ -88,13 +90,13 @@ class ParserController extends Controller{
         $num = ($count[0] % 10 != 0) ? ceil($count[0]/10) : $count[0]/10;
 
         for ($i = 1; $i<=$num; $i++ ) {
-            //$this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
+            $this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
         }
 
         // Specs
         $num = ($count[1] % 10 != 0) ? ceil($count[1]/10) : $count[1]/10;
 
-        for ($i = 1; $i<=$num; $i++ ) {
+        for ($i = 31; $i<=$num; $i++ ) {
             $this->specialist( $this->domain . $this->city . '/doctors/all/page/' . $i );
         }
     }
@@ -187,7 +189,11 @@ class ParserController extends Controller{
                 //Вычисление кол-ва ajax запросов
                 foreach ($htmlOrgDet::str_get_html($data)->find('.js-switch-tab-review') as $count) {
                     $countRew = substr(trim($count->plaintext), 0, -11);
+                    $countRew = preg_replace( "/[^0-9]/", '', $countRew );
                 }
+
+                //random
+                $countRew = ($countRew > $this->maxCountReviews )? rand( $this->minCountReviews, $this->maxCountReviews) : $countRew;
 
                 $count = ceil((integer)$countRew / 10);
 
@@ -318,8 +324,9 @@ class ParserController extends Controller{
             if(!empty( $htmlDocDet::str_get_html($data)->find('.kliniki_profile_reviews_count') )) {
 
                 foreach ($htmlDocDet::str_get_html($data)->find('.kliniki_profile_reviews_count') as $count) {
-                    (integer)$str = preg_replace("/[^0-9]/", '', trim($count->plaintext));
-                    $count = ceil(($str / 10));
+                    (integer)$count = preg_replace("/[^0-9]/", '', trim($count->plaintext));
+                    $count = ($count > $this->maxCountReviews )? rand( $this->minCountReviews, $this->maxCountReviews) : $count;
+                    $count = ceil(($count / 10));
                 }
 
                 foreach ($htmlDocDet::str_get_html($data)->find('.js-book-button') as $dataid) {
@@ -383,7 +390,6 @@ class ParserController extends Controller{
             $org->rating = $data['rating'];
             $org->schedule = $data['schedule'];
             $org->description = $data['desc'];
-            //$org->logo = $data['logo'];
             $org->status = OrganizationStatus::ACTIVE;
             if($org->save()){
                 echo "Организация добавлена\n";
