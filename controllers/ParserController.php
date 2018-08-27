@@ -94,7 +94,7 @@ class ParserController extends Controller{
         // Specs
         $num = ($count[1] % 10 != 0) ? ceil($count[1]/10) : $count[1]/10;
 
-        for ($i = 10; $i<=$num; $i++ ) {
+        for ($i = 1; $i<=$num; $i++ ) {
             $this->specialist( $this->domain . $this->city . '/doctors/all/page/' . $i );
         }
     }
@@ -249,7 +249,6 @@ class ParserController extends Controller{
         foreach($htmlDocList::str_get_html($data)->find('[data-ajax-zone=results] .kliniki_clinic_name a') as $element){
 
             $data = $this->connect($domain . $element->href);
-            $data = $this->connect('https://kliniki-online.ru/msk/doctor10466-romashenko-oksana-vladimirovna');
             $updateData['link'] = $element->href;
             $updateReviews['link'] = $element->href;
 
