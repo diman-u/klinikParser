@@ -513,7 +513,7 @@ class ParserController extends Controller{
             $orgPhoto->organizationId = $org->getPrimaryKey();
             $orgPhoto->photo = $this->domain2 . $data['photo'][$key];
             $orgPhoto->photoSmall = $this->domain2 . $data['photoSmall'][$key];
-            $orgPhoto->createdAt = date('Ymd');
+            $orgPhoto->createdAt = time();
             if($orgPhoto->save()){
                 echo "Запись в фото добавлена\n";
             }
@@ -532,7 +532,7 @@ class ParserController extends Controller{
         $specPhoto->specialistId = $spec->getPrimaryKey();
         $specPhoto->photo = (isset($data)) ? $this->domain2 . $data : null;
         $specPhoto->photoSmall = $this->domain2 . $data;
-        $specPhoto->createdAt = date('Ymd');
+        $specPhoto->createdAt = time();
         if($specPhoto->save()){
             echo "Запись в фото добавлена\n";
         }
