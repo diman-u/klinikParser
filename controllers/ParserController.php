@@ -90,7 +90,7 @@ class ParserController extends Controller{
         $num = ($count[0] % 10 != 0) ? ceil($count[0]/10) : $count[0]/10;
 
         for ($i = 1; $i<=$num; $i++ ) {
-            $this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
+            //$this->organizations( $this->domain . $this->city . '/clinics/all/page/' . $i );
         }
 
         // Specs
@@ -113,7 +113,7 @@ class ParserController extends Controller{
 
             //links
             $updateData['name'] = $element->plaintext;
-            $updateData['link'] = $element->href;
+            $link = $updateData['link'] = $element->href;
             $data = $this->connect($domain . $element->href);
 
             //address
@@ -197,11 +197,12 @@ class ParserController extends Controller{
 
                 $count = ceil((integer)$countRew / 10);
 
-                for ($i = 2; $i <= $count+1; $i++) {
+                for ($i = 1; $i <= $count; $i++) {
 
                     // Формирование url
                     $providerCode = str_replace('/' . $this->city . '/', '', $updateData['link']);
-                    $url = $domain . "/reviews/" . $idOrg . "/page/" . $i. "?cityCode=" . $this->city . "&typeCode=clinic&providerCode=" . $providerCode;
+                    echo $url = $domain . "/reviews/" . $idOrg . "/page/" . $i. "?cityCode=" . $this->city . "&typeCode=clinic&providerCode=" . $providerCode;
+                    echo "\n";
                     $data = $this->connect($url);
 
                     foreach ($htmlOrgDet::str_get_html($data)->find('[itemprop=description]') as $desc) {
@@ -228,17 +229,21 @@ class ParserController extends Controller{
             $this->actionUpdateOrg($updateData);
 
             if(isset($photo)){
+
                 $this->actionUpdatePhotoOrg($photo, $updateData['link']);
+                unset($photo);
             }
 
             if (isset($updateData['reviews'])) {
                 $this->actionUpdateReviewsOrg($updateData['reviews']);
+                unset($updateData['reviews']);
+                unset($revs);
             }
-
 
             if (isset($updateService)) {
                 $updateService['link'] = $updateData['link'];
                 $this->actionUpdateServicesOrg($updateService);
+                unset($updateService);
             }
         }
     }
@@ -371,6 +376,7 @@ class ParserController extends Controller{
 
             if (isset($photo)) {
                 $this->actionUpdatePhotoSpec($photo, $updateData['link']);
+                unset($photo);
             }
         }
     }
@@ -401,7 +407,7 @@ class ParserController extends Controller{
 
     public function actionUpdateSpec($data) {
         if (!$org = Organization::findOne(['parserLink'=>$data['OrganizationId']])) {
-            echo "Запись в отзывы НЕ добавлена, орагинизация не найдена ({$data['link']})\n";
+            echo "Запись НЕ добавлена, организация не найдена ({$data['link']})\n";
             return;
         }
 
@@ -436,7 +442,7 @@ class ParserController extends Controller{
         }
 
         if (!$org = Organization::findOne(['parserLink'=>$data['link']])) {
-            echo "Запись в отзывы НЕ добавлена, орагинизация не найдена ({$data['link']})\n";
+            echo "Запись в отзывы НЕ добавлена, организация не найдена ({$data['link']})\n";
             return;
         }
 
@@ -457,7 +463,7 @@ class ParserController extends Controller{
 
     public function actionUpdateReviewsSpec($data) {
         if (!$user = User::find()->one()) {
-            echo "Запись в отзывы спец. НЕ добавлена, пользоватедль не найден\n";
+            echo "Запись в отзывы спец. НЕ добавлена, пользователь не найден\n";
             return;
         }
 
